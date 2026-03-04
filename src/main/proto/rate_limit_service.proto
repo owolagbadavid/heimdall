@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package dev.tobee.heimdall.services.grpc;
+
+option java_package = "dev.tobee.heimdall.services.grpc";
+option java_multiple_files = true;
+
+service RateLimitService {
+  rpc CheckRateLimit(RateLimitRequest) returns (RateLimitResponse);
+}
+
+message RateLimitRequest {
+  string api = 1;
+  string op = 2;
+  string key = 3; // caller identifier: user ID, IP address, API key, etc.
+}
+
+message RateLimitResponse {
+  bool allowed = 1;
+  int64 remaining_tokens = 2;
+}
