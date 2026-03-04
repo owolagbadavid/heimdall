@@ -1,11 +1,9 @@
 package dev.tobee.heimdall.repositories;
 
+import dev.tobee.heimdall.repositories.redis.RedisClient;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Repository;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,7 +21,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class TokenRepository {
 
-    private final StringRedisTemplate redisTemplate;
+    private final RedisClient redisClient;
 
     /**
      * Atomic token-bucket consume script.
@@ -111,9 +109,7 @@ public class TokenRepository {
      * @return remaining tokens after consumption (≥ 0), or −1 if rate-limited
      */
     public long consumeToken(String key, long maxTokens, long windowSecs) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>(CONSUME_SCRIPT, Long.class);
-        Long result = redisTemplate.execute(script,
-                Collections.singletonList(key),
+        Long result = redisClient.executeLua(CONSUME_SCRIPT, Long.class, key,
                 String.valueOf(maxTokens), String.valueOf(windowSecs));
         return result != null ? result : -1;
     }
@@ -122,9 +118,7 @@ public class TokenRepository {
      * Peek at the current available tokens (after refill) without consuming.
      */
     public Optional<Long> getTokens(String key, long maxTokens, long windowSecs) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>(PEEK_SCRIPT, Long.class);
-        Long result = redisTemplate.execute(script,
-                Collections.singletonList(key),
+        Long result = redisClient.executeLua(PEEK_SCRIPT, Long.class, key,
                 String.valueOf(maxTokens), String.valueOf(windowSecs));
         return Optional.ofNullable(result);
     }
@@ -133,7 +127,7 @@ public class TokenRepository {
      * Read the raw bucket fields (tokens, last_request) without refill.
      */
     public Optional<List<String>> getRawBucket(String key) {
-        List<Object> values = redisTemplate.opsForHash().multiGet(key, List.of("tokens", "last_request"));
+        List<Object> values = redisClient.hashMultiGet(key, List.of("tokens", "last_request"));
         if (values.getFirst() == null) {
             return Optional.empty();
         }
@@ -144,13 +138,13 @@ public class TokenRepository {
      * Get remaining TTL for a bucket key (seconds).
      */
     public Long getTtl(String key) {
-        return redisTemplate.getExpire(key);
+        return redisClient.getTtl(key);
     }
 
     /**
      * Delete a token bucket.
      */
     public boolean delete(String key) {
-        return Boolean.TRUE.equals(redisTemplate.delete(key));
+        return redisClient.delete(key);
     }
 }
