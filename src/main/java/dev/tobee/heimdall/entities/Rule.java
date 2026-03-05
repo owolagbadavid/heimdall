@@ -2,12 +2,12 @@ package dev.tobee.heimdall.entities;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.UuidGenerator;
 
 @Entity
 @Table(name = "rules")
@@ -15,15 +15,16 @@ import lombok.Setter;
 @Setter
 public class Rule {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @GeneratedValue
+    @UuidGenerator(style = UuidGenerator.Style.TIME)
     private String id;
 
     private String name;
     private String api;
     private String op;
-    private String timeInSeconds;
-    private String rateLimit;
+    private long timeInSeconds;
+    private long rateLimit;
 
     @Version
-    private int version;
+    private long version;
 }
