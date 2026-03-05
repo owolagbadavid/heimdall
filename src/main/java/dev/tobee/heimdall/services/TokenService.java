@@ -48,8 +48,8 @@ public class TokenService {
             return -2;
         }
 
-        long maxTokens = Long.parseLong(rule.get().getRateLimit());
-        long windowSeconds = Long.parseLong(rule.get().getTimeInSeconds());
+        long maxTokens = rule.get().getRateLimit();
+        long windowSeconds = rule.get().getTimeInSeconds();
         String bucketKey = buildKey(api, op, key);
 
         return tokenRepository.consumeToken(bucketKey, maxTokens, windowSeconds);
@@ -63,8 +63,8 @@ public class TokenService {
         if (rule.isEmpty()) {
             return Optional.empty();
         }
-        long maxTokens = Long.parseLong(rule.get().getRateLimit());
-        long windowSeconds = Long.parseLong(rule.get().getTimeInSeconds());
+        long maxTokens = rule.get().getRateLimit();
+        long windowSeconds = rule.get().getTimeInSeconds();
         return tokenRepository.getTokens(buildKey(api, op, key), maxTokens, windowSeconds);
     }
 

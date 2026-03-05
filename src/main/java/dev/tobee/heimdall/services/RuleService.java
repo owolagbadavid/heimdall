@@ -12,6 +12,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -70,6 +71,54 @@ public class RuleService {
                 ruleCacheRepository.evict(rule.getApi(), rule.getOp()));
         ruleRepository.deleteById(id);
     }
+
+    @Transactional
+    public Rule create(Rule rule) {
+        rule.setId(null);
+        return save(rule);
+    }
+
+    @Transactional
+    public Optional<Rule> update(String id, Rule rule) {
+        return ruleRepository.findById(id)
+                .map(existing -> {
+                    existing.setName(rule.getName());
+                    existing.setApi(rule.getApi());
+                    existing.setOp(rule.getOp());
+                    existing.setTimeInSeconds(rule.getTimeInSeconds());
+                    existing.setRateLimit(rule.getRateLimit());
+                    return save(existing);
+                });
+    }
+
+    @Transactional
+    public boolean delete(String id) {
+        if (ruleRepository.existsById(id)) {
+            deleteById(id);
+            return true;
+        }
+        return false;
+    }
+
+    @Transactional(readOnly = true)
+    public RulePage getPagedRules(int limit, String nextToken) {
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+        int fetchSize = safeLimit + 1;
+
+        List<Rule> fetched = (nextToken == null || nextToken.isBlank())
+                ? ruleRepository.findAllByOrderByIdAsc(PageRequest.of(0, fetchSize))
+                : ruleRepository.findByIdGreaterThanOrderByIdAsc(nextToken, PageRequest.of(0, fetchSize));
+
+        boolean hasMore = fetched.size() > safeLimit;
+        List<Rule> items = hasMore
+                ? new ArrayList<>(fetched.subList(0, safeLimit))
+                : fetched;
+
+        String newNextToken = hasMore ? items.getLast().getId() : null;
+        return new RulePage(items, newNextToken);
+    }
+
+    public record RulePage(List<Rule> items, String nextToken) {}
 
     /**
      * Reload rules from the database into the Redis cache, batch by batch,
