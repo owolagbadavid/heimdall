@@ -3,7 +3,7 @@ name: Build and Deploy to Azure Container Apps
 on:
   push:
     branches:
-      - dev
+      - main
 
 jobs:
   build-and-push:
