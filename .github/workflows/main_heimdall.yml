@@ -21,7 +21,7 @@ jobs:
       - name: Set up Java version
         uses: actions/setup-java@v4
         with:
-          java-version: 'java25'
+          java-version: '25'
           distribution: 'microsoft'
 
       - name: Build with Maven
@@ -50,4 +50,5 @@ jobs:
           app-name: 'heimdall'
           slot-name: 'Production'
           package: '*.jar'
+
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9B26569C9F9949CB84E4361B1F1A22AE }}
