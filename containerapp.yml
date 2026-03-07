@@ -15,9 +15,11 @@ properties:
     ingress:
       external: true
       targetPort: 8080
+      transport: auto
       additionalPortMappings:
         - external: false
           targetPort: 9090
+          exposedPort: 9090
     registries:
       - server: oinitreg.azurecr.io
         identity: system

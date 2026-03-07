@@ -66,8 +66,12 @@ jobs:
             }
 
       - name: Deploy to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v2
-        with:
-          resourceGroup: initrg
-          containerAppName: heimdall
-          yamlConfigPath: containerapp.yml
+        run: |
+          # Check if the container app already exists
+          if az containerapp show -n heimdall -g initrg -o none 2>/dev/null; then
+            echo "Updating existing Container App..."
+            az containerapp update -n heimdall -g initrg --yaml containerapp.yml
+          else
+            echo "Creating new Container App..."
+            az containerapp create -n heimdall -g initrg --yaml containerapp.yml
+          fi
