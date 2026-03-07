@@ -1,5 +1,5 @@
 # ── Build stage ───────────────────────────────────────────────────────
-FROM eclipse-temurin:25-alpine AS builder
+FROM eclipse-temurin:25-jdk AS builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ COPY ./src ./src
 RUN --mount=type=cache,target=/root/.m2 rm -rf target && ./mvnw clean package spring-boot:repackage -DskipTests
 
 # ── Runtime stage ─────────────────────────────────────────────────────
-FROM eclipse-temurin:25-jre-alpine AS runtime
+FROM eclipse-temurin:25-jdk AS runtime
 
 ARG user=heimdall
 ARG group=heimdall
@@ -26,12 +26,10 @@ ARG APP_HOME=/opt/heimdall
 
 ENV APP_HOME=${APP_HOME}
 
-RUN mkdir -p $APP_HOME \
-  && chown ${uid}:${gid} $APP_HOME \
-  && addgroup -g ${gid} ${group} \
-  && adduser -h "$APP_HOME" -u ${uid} -G ${group} -s /bin/bash -D ${user}
-
-RUN apk add --no-cache curl
+RUN groupadd -g ${gid} ${group} \
+    && useradd -m -u ${uid} -g ${gid} -s /bin/bash ${user} \
+    && mkdir -p $APP_HOME \
+    && chown ${uid}:${gid} $APP_HOME
 
 WORKDIR $APP_HOME
 
