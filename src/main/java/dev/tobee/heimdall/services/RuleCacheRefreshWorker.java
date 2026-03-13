@@ -21,10 +21,10 @@ public class RuleCacheRefreshWorker {
      */
     @Scheduled(fixedRateString = "${heimdall.cache.refresh-interval-ms:60000}")
     public void refresh() {
-        try {
-            ruleService.refreshCache();
-        } catch (Exception e) {
-            log.error("Failed to refresh rule cache", e);
-        }
+        ruleService.refreshCache()
+                .subscribe(
+                        unused -> {},
+                        e -> log.error("Failed to refresh rule cache", e)
+                );
     }
 }

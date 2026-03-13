@@ -3,9 +3,9 @@ package dev.tobee.heimdall.repositories;
 import dev.tobee.heimdall.repositories.redis.RedisClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Redis-backed repository for token bucket rate limiting.
@@ -108,43 +108,40 @@ public class TokenRepository {
      * @param windowSecs time window in seconds over which tokens fully refill
      * @return remaining tokens after consumption (≥ 0), or −1 if rate-limited
      */
-    public long consumeToken(String key, long maxTokens, long windowSecs) {
-        Long result = redisClient.executeLua(CONSUME_SCRIPT, Long.class, key,
-                String.valueOf(maxTokens), String.valueOf(windowSecs));
-        return result != null ? result : -1;
+    public Mono<Long> consumeToken(String key, long maxTokens, long windowSecs) {
+        return redisClient.executeLua(CONSUME_SCRIPT, Long.class, key,
+                        String.valueOf(maxTokens), String.valueOf(windowSecs))
+                .defaultIfEmpty(-1L);
     }
 
     /**
      * Peek at the current available tokens (after refill) without consuming.
      */
-    public Optional<Long> getTokens(String key, long maxTokens, long windowSecs) {
-        Long result = redisClient.executeLua(PEEK_SCRIPT, Long.class, key,
+    public Mono<Long> getTokens(String key, long maxTokens, long windowSecs) {
+        return redisClient.executeLua(PEEK_SCRIPT, Long.class, key,
                 String.valueOf(maxTokens), String.valueOf(windowSecs));
-        return Optional.ofNullable(result);
     }
 
     /**
      * Read the raw bucket fields (tokens, last_request) without refill.
      */
-    public Optional<List<String>> getRawBucket(String key) {
-        List<Object> values = redisClient.hashMultiGet(key, List.of("tokens", "last_request"));
-        if (values.getFirst() == null) {
-            return Optional.empty();
-        }
-        return Optional.of(values.stream().map(Object::toString).toList());
+    public Mono<List<String>> getRawBucket(String key) {
+        return redisClient.hashMultiGet(key, List.of("tokens", "last_request"))
+                .filter(values -> values.getFirst() != null)
+                .map(values -> values.stream().map(Object::toString).toList());
     }
 
     /**
      * Get remaining TTL for a bucket key (seconds).
      */
-    public Long getTtl(String key) {
+    public Mono<Long> getTtl(String key) {
         return redisClient.getTtl(key);
     }
 
     /**
      * Delete a token bucket.
      */
-    public boolean delete(String key) {
+    public Mono<Boolean> delete(String key) {
         return redisClient.delete(key);
     }
 }

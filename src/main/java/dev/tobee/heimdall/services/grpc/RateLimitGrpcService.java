@@ -17,15 +17,18 @@ public class RateLimitGrpcService extends RateLimitServiceGrpc.RateLimitServiceI
         String op = request.getOp();
         String key = request.getKey();
 
-        long remaining = tokenService.tryConsume(api, op, key);
-        boolean allowed = remaining >= 0;
-
-        RateLimitResponse response = RateLimitResponse.newBuilder()
-                .setAllowed(allowed)
-                .setRemainingTokens(Math.max(remaining, 0))
-                .build();
-
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
+        tokenService.tryConsume(api, op, key)
+                .subscribe(
+                        remaining -> {
+                            boolean allowed = remaining >= 0;
+                            RateLimitResponse response = RateLimitResponse.newBuilder()
+                                    .setAllowed(allowed)
+                                    .setRemainingTokens(Math.max(remaining, 0))
+                                    .build();
+                            responseObserver.onNext(response);
+                            responseObserver.onCompleted();
+                        },
+                        responseObserver::onError
+                );
     }
 }

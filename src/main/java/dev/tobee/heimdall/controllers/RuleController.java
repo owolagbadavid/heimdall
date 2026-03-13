@@ -20,9 +20,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/rules")
@@ -37,9 +37,9 @@ public class RuleController {
 					content = @Content(schema = @Schema(implementation = RuleResponse.class)))
 	})
 	@PostMapping
-	public ResponseEntity<RuleResponse> createRule(@RequestBody RuleUpsertRequest request) {
-		Rule created = ruleService.create(toRule(request));
-		return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created));
+	public Mono<ResponseEntity<RuleResponse>> createRule(@RequestBody RuleUpsertRequest request) {
+		return ruleService.create(toRule(request))
+				.map(created -> ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created)));
 	}
 
 	@Operation(summary = "Update a rule", responses = {
@@ -47,11 +47,10 @@ public class RuleController {
 			@ApiResponse(responseCode = "404", description = "Rule not found", content = @Content)
 	})
 	@PutMapping("/{id}")
-	public ResponseEntity<RuleResponse> updateRule(@PathVariable String id, @RequestBody RuleUpsertRequest request) {
-		Optional<Rule> updated = ruleService.update(id, toRule(request));
-		return updated
+	public Mono<ResponseEntity<RuleResponse>> updateRule(@PathVariable String id, @RequestBody RuleUpsertRequest request) {
+		return ruleService.update(id, toRule(request))
 				.map(rule -> ResponseEntity.ok(toResponse(rule)))
-				.orElseGet(() -> ResponseEntity.notFound().build());
+				.defaultIfEmpty(ResponseEntity.notFound().build());
 	}
 
 	@Operation(summary = "Get a single rule by ID", responses = {
@@ -59,21 +58,23 @@ public class RuleController {
 			@ApiResponse(responseCode = "404", description = "Rule not found", content = @Content)
 	})
 	@GetMapping("/{id}")
-	public ResponseEntity<RuleResponse> getRule(@PathVariable String id) {
+	public Mono<ResponseEntity<RuleResponse>> getRule(@PathVariable String id) {
 		return ruleService.findById(id)
 				.map(rule -> ResponseEntity.ok(toResponse(rule)))
-				.orElseGet(() -> ResponseEntity.notFound().build());
+				.defaultIfEmpty(ResponseEntity.notFound().build());
 	}
 
 	@Operation(summary = "List rules with token pagination")
 	@GetMapping
-	public RulePageResponse getRules(
+	public Mono<RulePageResponse> getRules(
 			@Parameter(description = "Max items per page (1-100)") @RequestParam(defaultValue = "20") int limit,
 			@Parameter(description = "Cursor token from a previous response") @RequestParam(required = false) String nextToken
 	) {
-		RuleService.RulePage page = ruleService.getPagedRules(limit, nextToken);
-		List<RuleResponse> items = page.items().stream().map(this::toResponse).toList();
-		return new RulePageResponse(items, page.nextToken());
+		return ruleService.getPagedRules(limit, nextToken)
+				.map(page -> {
+					List<RuleResponse> items = page.items().stream().map(this::toResponse).toList();
+					return new RulePageResponse(items, page.nextToken());
+				});
 	}
 
 	@Operation(summary = "Delete a rule", responses = {
@@ -81,11 +82,11 @@ public class RuleController {
 			@ApiResponse(responseCode = "404", description = "Rule not found", content = @Content)
 	})
 	@DeleteMapping("/{id}")
-	public ResponseEntity<Void> deleteRule(@PathVariable String id) {
-		boolean deleted = ruleService.delete(id);
-		return deleted
-				? ResponseEntity.noContent().build()
-				: ResponseEntity.notFound().build();
+	public Mono<ResponseEntity<Void>> deleteRule(@PathVariable String id) {
+		return ruleService.delete(id)
+				.map(deleted -> deleted
+						? ResponseEntity.noContent().<Void>build()
+						: ResponseEntity.notFound().<Void>build());
 	}
 
 	private Rule toRule(RuleUpsertRequest request) {
