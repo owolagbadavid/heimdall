@@ -6,15 +6,12 @@ import dev.tobee.heimdall.repositories.RuleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -28,12 +25,12 @@ public class RuleService {
     private int batchSize;
 
     @Transactional(readOnly = true)
-    public List<Rule> findAll() {
+    public Flux<Rule> findAll() {
         return ruleRepository.findAll();
     }
 
     @Transactional(readOnly = true)
-    public Optional<Rule> findById(String id) {
+    public Mono<Rule> findById(String id) {
         return ruleRepository.findById(id);
     }
 
@@ -42,46 +39,42 @@ public class RuleService {
      * falls back to the database on a cache miss and populates the cache.
      */
     @Transactional(readOnly = true)
-    public Optional<Rule> findByApiAndOp(String api, String op) {
-        Optional<Rule> cached = ruleCacheRepository.get(api, op);
-        if (cached.isPresent()) {
-            return cached;
-        }
-
-        Optional<Rule> rule = ruleRepository.findByApiAndOp(api, op);
-        rule.ifPresent(ruleCacheRepository::put);
-        return rule;
+    public Mono<Rule> findByApiAndOp(String api, String op) {
+        return ruleCacheRepository.get(api, op)
+                .switchIfEmpty(
+                        ruleRepository.findByApiAndOp(api, op)
+                                .flatMap(rule -> ruleCacheRepository.put(rule).thenReturn(rule))
+                );
     }
 
     @Transactional(readOnly = true)
-    public List<Rule> findByApi(String api) {
+    public Flux<Rule> findByApi(String api) {
         return ruleRepository.findByApi(api);
     }
 
     @Transactional
-    public Rule save(Rule rule) {
-        Rule saved = ruleRepository.save(rule);
-        ruleCacheRepository.put(saved);
-        return saved;
+    public Mono<Rule> save(Rule rule) {
+        return ruleRepository.save(rule)
+                .flatMap(saved -> ruleCacheRepository.put(saved).thenReturn(saved));
     }
 
     @Transactional
-    public void deleteById(String id) {
-        ruleRepository.findById(id).ifPresent(rule ->
-                ruleCacheRepository.evict(rule.getApi(), rule.getOp()));
-        ruleRepository.deleteById(id);
+    public Mono<Void> deleteById(String id) {
+        return ruleRepository.findById(id)
+                .flatMap(rule -> ruleCacheRepository.evict(rule.getApi(), rule.getOp()))
+                .then(ruleRepository.deleteById(id));
     }
 
     @Transactional
-    public Rule create(Rule rule) {
+    public Mono<Rule> create(Rule rule) {
         rule.setId(null);
         return save(rule);
     }
 
     @Transactional
-    public Optional<Rule> update(String id, Rule rule) {
+    public Mono<Rule> update(String id, Rule rule) {
         return ruleRepository.findById(id)
-                .map(existing -> {
+                .flatMap(existing -> {
                     existing.setName(rule.getName());
                     existing.setApi(rule.getApi());
                     existing.setOp(rule.getOp());
@@ -92,54 +85,44 @@ public class RuleService {
     }
 
     @Transactional
-    public boolean delete(String id) {
-        if (ruleRepository.existsById(id)) {
-            deleteById(id);
-            return true;
-        }
-        return false;
+    public Mono<Boolean> delete(String id) {
+        return ruleRepository.existsById(id)
+                .flatMap(exists -> {
+                    if (!exists) return Mono.just(false);
+                    return deleteById(id).thenReturn(true);
+                });
     }
 
     @Transactional(readOnly = true)
-    public RulePage getPagedRules(int limit, String nextToken) {
+    public Mono<RulePage> getPagedRules(int limit, String nextToken) {
         int safeLimit = Math.max(1, Math.min(limit, 100));
         int fetchSize = safeLimit + 1;
 
-        List<Rule> fetched = (nextToken == null || nextToken.isBlank())
-                ? ruleRepository.findAllByOrderByIdAsc(PageRequest.of(0, fetchSize))
-                : ruleRepository.findByIdGreaterThanOrderByIdAsc(nextToken, PageRequest.of(0, fetchSize));
+        Flux<Rule> fetched = (nextToken == null || nextToken.isBlank())
+                ? ruleRepository.findAllByOrderByIdAsc(fetchSize)
+                : ruleRepository.findByIdGreaterThanOrderByIdAsc(nextToken, fetchSize);
 
-        boolean hasMore = fetched.size() > safeLimit;
-        List<Rule> items = hasMore
-                ? new ArrayList<>(fetched.subList(0, safeLimit))
-                : fetched;
-
-        String newNextToken = hasMore ? items.getLast().getId() : null;
-        return new RulePage(items, newNextToken);
+        return fetched.collectList().map(list -> {
+            boolean hasMore = list.size() > safeLimit;
+            List<Rule> items = hasMore ? list.subList(0, safeLimit) : list;
+            String newNextToken = hasMore ? items.getLast().getId() : null;
+            return new RulePage(items, newNextToken);
+        });
     }
 
     public record RulePage(List<Rule> items, String nextToken) {}
 
     /**
-     * Reload rules from the database into the Redis cache, batch by batch,
-     * so we never load all rules into memory at once.
+     * Reload rules from the database into the Redis cache, batch by batch.
      * Called by {@link RuleCacheRefreshWorker} on a schedule.
      */
     @Transactional(readOnly = true)
-    public void refreshCache() {
-        int page = 0;
-        int total = 0;
-        Page<Rule> batch;
-
-        do {
-            batch = ruleRepository.findAll(PageRequest.of(page, batchSize, Sort.by("id")));
-            for (Rule r : batch.getContent()) {
-                ruleCacheRepository.put(r);
-            }
-            total += batch.getNumberOfElements();
-            page++;
-        } while (batch.hasNext());
-
-        log.info("Rule cache refreshed — {} rules loaded in {} batches", total, page);
+    public Mono<Void> refreshCache() {
+        return ruleRepository.findAll()
+                .buffer(batchSize)
+                .flatMap(batch -> Flux.fromIterable(batch)
+                        .flatMap(ruleCacheRepository::put))
+                .then()
+                .doOnSuccess(v -> log.info("Rule cache refreshed"));
     }
 }

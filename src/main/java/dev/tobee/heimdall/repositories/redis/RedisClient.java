@@ -2,18 +2,18 @@ package dev.tobee.heimdall.repositories.redis;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
- * Thin wrapper around {@link StringRedisTemplate} providing common Redis
+ * Thin wrapper around {@link ReactiveStringRedisTemplate} providing common Redis
  * operations used by both token-bucket and rule-cache repositories.
  * <p>
  * When Redis sharding is enabled (via {@code heimdall.redis.shards}), each
@@ -24,14 +24,14 @@ import java.util.Optional;
 @Slf4j
 public class RedisClient {
 
-    private final StringRedisTemplate defaultTemplate;
+    private final ReactiveStringRedisTemplate defaultTemplate;
     private final ConsistentHashRing<String> shardRing;
-    private final Map<String, StringRedisTemplate> shardTemplates;
+    private final Map<String, ReactiveStringRedisTemplate> shardTemplates;
 
     public RedisClient(
-            StringRedisTemplate defaultTemplate,
+            ReactiveStringRedisTemplate defaultTemplate,
             @Autowired(required = false) ConsistentHashRing<String> shardRing,
-            @Autowired(required = false) Map<String, StringRedisTemplate> redisShardTemplates
+            @Autowired(required = false) Map<String, ReactiveStringRedisTemplate> redisShardTemplates
     ) {
         this.defaultTemplate = defaultTemplate;
         this.shardRing = shardRing;
@@ -45,9 +45,9 @@ public class RedisClient {
     }
 
     /**
-     * Resolve the {@link StringRedisTemplate} responsible for the given key.
+     * Resolve the {@link ReactiveStringRedisTemplate} responsible for the given key.
      */
-    private StringRedisTemplate templateFor(String key) {
+    private ReactiveStringRedisTemplate templateFor(String key) {
         if (shardRing == null || shardTemplates == null) {
             return defaultTemplate;
         }
@@ -57,67 +57,68 @@ public class RedisClient {
 
     // ── String operations ───────────────────────────────────────────────
 
-    public void set(String key, String value) {
-        templateFor(key).opsForValue().set(key, value);
+    public Mono<Void> set(String key, String value) {
+        return templateFor(key).opsForValue().set(key, value).then();
     }
 
-    public void set(String key, String value, Duration ttl) {
-        templateFor(key).opsForValue().set(key, value, ttl);
+    public Mono<Void> set(String key, String value, Duration ttl) {
+        return templateFor(key).opsForValue().set(key, value, ttl).then();
     }
 
-    public Optional<String> get(String key) {
-        return Optional.ofNullable(templateFor(key).opsForValue().get(key));
+    public Mono<String> get(String key) {
+        return templateFor(key).opsForValue().get(key);
     }
 
     // ── Hash operations ─────────────────────────────────────────────────
 
-    public void hashPut(String key, String field, String value) {
-        templateFor(key).opsForHash().put(key, field, value);
+    public Mono<Void> hashPut(String key, String field, String value) {
+        return templateFor(key).opsForHash().put(key, field, value).then();
     }
 
-    public void hashPutAll(String key, Map<String, String> entries) {
-        templateFor(key).opsForHash().putAll(key, entries);
+    public Mono<Void> hashPutAll(String key, Map<String, String> entries) {
+        return templateFor(key).<String, String>opsForHash().putAll(key, entries).then();
     }
 
-    public Optional<String> hashGet(String key, String field) {
-        Object value = templateFor(key).opsForHash().get(key, field);
-        return value == null ? Optional.empty() : Optional.of(value.toString());
+    public Mono<Object> hashGet(String key, String field) {
+        return templateFor(key).opsForHash().get(key, field);
     }
 
-    public List<Object> hashMultiGet(String key, List<String> fields) {
+    public Mono<List<Object>> hashMultiGet(String key, List<String> fields) {
         return templateFor(key).opsForHash().multiGet(key, List.copyOf(fields));
     }
 
-    public Map<Object, Object> hashGetAll(String key) {
-        return templateFor(key).opsForHash().entries(key);
+    public Mono<Map<Object, Object>> hashGetAll(String key) {
+        return templateFor(key).opsForHash().entries(key).collectMap(Map.Entry::getKey, Map.Entry::getValue);
     }
 
-    public void hashDelete(String key, String... fields) {
-        templateFor(key).opsForHash().delete(key, (Object[]) fields);
+    public Mono<Long> hashDelete(String key, String... fields) {
+        return templateFor(key).opsForHash().remove(key, (Object[]) fields);
     }
 
     // ── Key operations ──────────────────────────────────────────────────
 
-    public boolean delete(String key) {
-        return Boolean.TRUE.equals(templateFor(key).delete(key));
+    public Mono<Boolean> delete(String key) {
+        return templateFor(key).delete(key).map(count -> count > 0);
     }
 
-    public void expire(String key, Duration ttl) {
-        templateFor(key).expire(key, ttl);
+    public Mono<Boolean> expire(String key, Duration ttl) {
+        return templateFor(key).expire(key, ttl);
     }
 
-    public Long getTtl(String key) {
-        return templateFor(key).getExpire(key);
+    public Mono<Long> getTtl(String key) {
+        return templateFor(key).getExpire(key).map(Duration::getSeconds);
     }
 
-    public boolean hasKey(String key) {
-        return Boolean.TRUE.equals(templateFor(key).hasKey(key));
+    public Mono<Boolean> hasKey(String key) {
+        return templateFor(key).hasKey(key);
     }
 
     // ── Lua script execution ────────────────────────────────────────────
 
-    public <T> T executeLua(String script, Class<T> resultType, String key, String... args) {
-        DefaultRedisScript<T> redisScript = new DefaultRedisScript<>(script, resultType);
-        return templateFor(key).execute(redisScript, Collections.singletonList(key), (Object[]) args);
+    public <T> Mono<T> executeLua(String script, Class<T> resultType, String key, String... args) {
+        RedisScript<T> redisScript = RedisScript.of(script, resultType);
+        return templateFor(key)
+                .execute(redisScript, Collections.singletonList(key), List.of((Object[]) args))
+                .next();
     }
 }

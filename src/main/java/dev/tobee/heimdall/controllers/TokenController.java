@@ -9,9 +9,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
 
 import java.util.Map;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1/tokens")
@@ -31,7 +31,7 @@ public class TokenController {
                     or −2 if no matching rule exists.
                     Mirrors gRPC RateLimitService.CheckRateLimit.""")
     @ApiResponse(responseCode = "200", description = "Consumption result returned")
-    public ResponseEntity<Map<String, Object>> tryConsume(
+    public Mono<ResponseEntity<Map<String, Object>>> tryConsume(
             @Parameter(description = "API identifier", required = true, example = "payment-api")
             @RequestParam String api,
             @Parameter(description = "Operation identifier", required = true, example = "createOrder")
@@ -39,16 +39,17 @@ public class TokenController {
             @Parameter(description = "Caller key (user ID, IP, etc.)", required = true, example = "user-42")
             @RequestParam String key) {
 
-        long result = tokenService.tryConsume(api, op, key);
-        boolean allowed = result >= 0;
-
-        return ResponseEntity.ok(Map.of(
-                "allowed", allowed,
-                "remaining", result,
-                "api", api,
-                "op", op,
-                "key", key
-        ));
+        return tokenService.tryConsume(api, op, key)
+                .map(result -> {
+                    boolean allowed = result >= 0;
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "allowed", allowed,
+                            "remaining", result,
+                            "api", api,
+                            "op", op,
+                            "key", key
+                    ));
+                });
     }
 
     @GetMapping("/remaining")
@@ -57,7 +58,7 @@ public class TokenController {
             description = "Returns the current available tokens (after refill) without consuming.")
     @ApiResponse(responseCode = "200", description = "Remaining tokens returned")
     @ApiResponse(responseCode = "404", description = "No matching rule found", content = @Content)
-    public ResponseEntity<Map<String, Object>> getRemaining(
+    public Mono<ResponseEntity<Map<String, Object>>> getRemaining(
             @Parameter(description = "API identifier", required = true, example = "payment-api")
             @RequestParam String api,
             @Parameter(description = "Operation identifier", required = true, example = "createOrder")
@@ -65,19 +66,15 @@ public class TokenController {
             @Parameter(description = "Caller key", required = true, example = "user-42")
             @RequestParam String key) {
 
-        Optional<Long> remaining = tokenService.getRemaining(api, op, key);
-
-        if (remaining.isEmpty()) {
-            return ResponseEntity.status(404).body(Map.of(
-                    "error", "No rule found for api=" + api + " op=" + op));
-        }
-
-        return ResponseEntity.ok(Map.of(
-                "remaining", remaining.get(),
-                "api", api,
-                "op", op,
-                "key", key
-        ));
+        return tokenService.getRemaining(api, op, key)
+                .map(remaining -> ResponseEntity.ok(Map.<String, Object>of(
+                        "remaining", remaining,
+                        "api", api,
+                        "op", op,
+                        "key", key
+                )))
+                .defaultIfEmpty(ResponseEntity.status(404).body(Map.of(
+                        "error", "No rule found for api=" + api + " op=" + op)));
     }
 
     @DeleteMapping("/reset")
@@ -85,7 +82,7 @@ public class TokenController {
             summary = "Reset a token bucket",
             description = "Deletes the bucket. The next consume call recreates it with full tokens.")
     @ApiResponse(responseCode = "204", description = "Bucket reset successfully")
-    public ResponseEntity<Void> resetBucket(
+    public Mono<ResponseEntity<Void>> resetBucket(
             @Parameter(description = "API identifier", required = true, example = "payment-api")
             @RequestParam String api,
             @Parameter(description = "Operation identifier", required = true, example = "createOrder")
@@ -93,7 +90,7 @@ public class TokenController {
             @Parameter(description = "Caller key", required = true, example = "user-42")
             @RequestParam String key) {
 
-        tokenService.resetBucket(api, op, key);
-        return ResponseEntity.noContent().build();
+        return tokenService.resetBucket(api, op, key)
+                .then(Mono.just(ResponseEntity.noContent().<Void>build()));
     }
 }

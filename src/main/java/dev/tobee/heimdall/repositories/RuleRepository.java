@@ -1,21 +1,23 @@
 package dev.tobee.heimdall.repositories;
 
 import dev.tobee.heimdall.entities.Rule;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.r2dbc.repository.Query;
+import org.springframework.data.repository.reactive.ReactiveCrudRepository;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import java.util.List;
-import java.util.Optional;
+public interface RuleRepository extends ReactiveCrudRepository<Rule, String> {
 
-@Repository
-public interface RuleRepository extends JpaRepository<Rule, String> {
+    Mono<Rule> findByApiAndOp(String api, String op);
 
-    Optional<Rule> findByApiAndOp(String api, String op);
+    Flux<Rule> findByApi(String api);
 
-    List<Rule> findByApi(String api);
+    @Query("SELECT * FROM rules ORDER BY id ASC LIMIT :limit")
+    Flux<Rule> findAllByOrderByIdAsc(int limit);
 
-    List<Rule> findAllByOrderByIdAsc(Pageable pageable);
+    @Query("SELECT * FROM rules WHERE id > :id ORDER BY id ASC LIMIT :limit")
+    Flux<Rule> findByIdGreaterThanOrderByIdAsc(String id, int limit);
 
-    List<Rule> findByIdGreaterThanOrderByIdAsc(String id, Pageable pageable);
+    @Query("SELECT * FROM rules ORDER BY id ASC LIMIT :limit OFFSET :offset")
+    Flux<Rule> findAllOrderedPaged(int limit, long offset);
 }

@@ -1,34 +1,22 @@
 package dev.tobee.heimdall.entities;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
-import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.UuidGenerator;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.relational.core.mapping.Table;
 
-@Entity
-@Table(name = "rules", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"api", "op"})
-})
+@Table("rules")
 @Getter
 @Setter
 public class Rule {
     @Id
-    @GeneratedValue
-    @UuidGenerator(style = UuidGenerator.Style.TIME)
     private String id;
 
     private String name;
 
-    @Column(nullable = false)
     private String api;
 
-    @Column(nullable = false)
     private String op;
     private long timeInSeconds;
     private long rateLimit;
