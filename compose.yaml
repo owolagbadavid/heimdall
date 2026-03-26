@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  app:
+    image: heimdall-app:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: heimdall-app
+    ports:
+      - "${GRPC_PORT:-9090}:${GRPC_PORT:-9090}"
+    environment:
+      DB_URL: ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      SQL_INIT_MODE: ${SQL_INIT_MODE:-always}
+      GRPC_REFLECTION: ${GRPC_REFLECTION:-true}
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
