@@ -13,7 +13,7 @@ services:
       DB_URL: ${DB_URL}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
-      REDIS_HOST: redis
+      REDIS_HOST: ${REDIS_HOST:-localhost}
       REDIS_PORT: ${REDIS_PORT:-6379}
       SQL_INIT_MODE: ${SQL_INIT_MODE:-always}
       GRPC_REFLECTION: ${GRPC_REFLECTION:-true}
