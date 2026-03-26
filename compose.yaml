@@ -9,6 +9,7 @@ services:
     container_name: heimdall-app
     ports:
       - "${GRPC_PORT:-9090}:${GRPC_PORT:-9090}"
+      - "8080:8080"
     environment:
       DB_URL: ${DB_URL}
       DB_USERNAME: ${DB_USERNAME}
