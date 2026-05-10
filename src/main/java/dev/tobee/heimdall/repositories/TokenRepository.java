@@ -40,6 +40,8 @@ public class TokenRepository {
             local max_tokens  = tonumber(ARGV[1])
             local window_secs = tonumber(ARGV[2])
 
+            if window_secs <= 0 then return -1 end
+
             -- server-side time for consistency (seconds + microseconds → double)
             local t   = redis.call('TIME')
             local now = tonumber(t[1]) + (tonumber(t[2]) / 1000000)
@@ -51,7 +53,7 @@ public class TokenRepository {
             if tokens == nil then
                 -- first request: init bucket, consume one token
                 tokens = max_tokens - 1
-                redis.call('HMSET', key, 'tokens', tostring(tokens), 'last_request', tostring(now))
+                redis.call('HSET', key, 'tokens', tostring(tokens), 'last_request', tostring(now))
                 redis.call('EXPIRE', key, window_secs * 2)
                 return math.floor(tokens)
             end
@@ -62,13 +64,14 @@ public class TokenRepository {
             tokens = math.min(max_tokens, tokens + elapsed * refill_rate)
 
             if tokens < 1 then
-                -- not enough tokens – update timestamp so partial refill isn't lost
-                redis.call('HMSET', key, 'tokens', tostring(tokens), 'last_request', tostring(now))
+                -- not enough tokens – refresh TTL so sustained rate-limiting doesn't let the key expire
+                redis.call('HSET', key, 'tokens', tostring(tokens), 'last_request', tostring(now))
+                redis.call('EXPIRE', key, window_secs * 2)
                 return -1
             end
 
             tokens = tokens - 1
-            redis.call('HMSET', key, 'tokens', tostring(tokens), 'last_request', tostring(now))
+            redis.call('HSET', key, 'tokens', tostring(tokens), 'last_request', tostring(now))
             redis.call('EXPIRE', key, window_secs * 2)
             return math.floor(tokens)
             """;
@@ -80,6 +83,8 @@ public class TokenRepository {
             local key         = KEYS[1]
             local max_tokens  = tonumber(ARGV[1])
             local window_secs = tonumber(ARGV[2])
+
+            if window_secs <= 0 then return max_tokens end
 
             local t   = redis.call('TIME')
             local now = tonumber(t[1]) + (tonumber(t[2]) / 1000000)

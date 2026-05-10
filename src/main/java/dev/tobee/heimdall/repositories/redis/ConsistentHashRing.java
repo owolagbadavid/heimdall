@@ -1,8 +1,6 @@
 package dev.tobee.heimdall.repositories.redis;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -69,18 +67,15 @@ public class ConsistentHashRing<T> {
     }
 
     /**
-     * MD5-based hash → unsigned 32-bit value for good distribution.
+     * FNV-1a 64-bit hash
      */
     private long hash(String key) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(key.getBytes(StandardCharsets.UTF_8));
-            return ((long) (digest[0] & 0xFF))
-                    | ((long) (digest[1] & 0xFF) << 8)
-                    | ((long) (digest[2] & 0xFF) << 16)
-                    | ((long) (digest[3] & 0xFF) << 24);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("MD5 not available", e);
+        byte[] bytes = key.getBytes(StandardCharsets.UTF_8);
+        long hash = 0xcbf29ce484222325L;
+        for (byte b : bytes) {
+            hash ^= (b & 0xFF);
+            hash *= 0x00000100000001B3L;
         }
+        return hash;
     }
 }
