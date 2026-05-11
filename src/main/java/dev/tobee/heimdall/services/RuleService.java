@@ -41,10 +41,10 @@ public class RuleService {
     @Transactional(readOnly = true)
     public Mono<Rule> findByApiAndOp(String api, String op) {
         return ruleCacheRepository.get(api, op)
-                .switchIfEmpty(
+                .switchIfEmpty(Mono.defer(() ->
                         ruleRepository.findByApiAndOp(api, op)
                                 .flatMap(rule -> ruleCacheRepository.put(rule).thenReturn(rule))
-                );
+                ));
     }
 
     @Transactional(readOnly = true)
