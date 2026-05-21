@@ -7,9 +7,12 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: heimdall-app
-    ports:
-      - "${GRPC_PORT:-9090}:${GRPC_PORT:-9090}"
-      - "8080:8080"
+    # ports:
+    #   - "${GRPC_PORT:-9090}:${GRPC_PORT:-9090}"
+    #   - "8080:8080"
+    expose:
+      - 8080
+      - ${GRPC_PORT:-9090}
     environment:
       DB_URL: ${DB_URL}
       DB_USERNAME: ${DB_USERNAME}
